@@ -1,4 +1,4 @@
-import React, { useState, ChangeEvent } from 'react';
+import React, { useState, ChangeEvent, useEffect } from 'react';
 import { 
   ChevronRight, 
   ChevronLeft, 
@@ -11,7 +11,10 @@ import {
   MonitorPlay,
   Palette,
   RefreshCcw,
-  Globe
+  Globe,
+  Plus,
+  Minus,
+  HelpCircle
 } from 'lucide-react';
 
 // --- Types & Translations ---
@@ -22,8 +25,8 @@ type ViewId = PhaseId | 'settings';
 const TRANSLATIONS = {
   CAST: {
     appTitle: 'Dinámica de Clase',
-    sidebarTitle: 'Gestor de Clase',
-    phasesHeader: 'Fases de Actividad',
+    sidebarTitle: 'Las apariencias engañan',
+    phasesHeader: 'Fases de la actividad',
     configHeader: 'Configuración',
     settingsLabel: 'Ajustes',
     languageHeader: 'Idioma',
@@ -40,12 +43,13 @@ const TRANSLATIONS = {
     galleryLabel: 'Galería de Imágenes',
     imageUrlLabel: 'URL de Imagen',
     uploadFileLabel: 'Subir archivo',
+    votes: 'Votos',
     fase1: 'Fase 1', fase2: 'Fase 2', fase3: 'Fase 3', fase4: 'Fase 4'
   },
   CAT: {
     appTitle: 'Dinàmica de Classe',
-    sidebarTitle: 'Gestor de Classe',
-    phasesHeader: "Fases d'Activitat",
+    sidebarTitle: 'Les aparences enganyen',
+    phasesHeader: "Fases de l'activitat",
     configHeader: 'Configuració',
     settingsLabel: 'Ajustaments',
     languageHeader: 'Idioma',
@@ -62,12 +66,13 @@ const TRANSLATIONS = {
     galleryLabel: "Galeria d'Imatges",
     imageUrlLabel: 'URL de la Imatge',
     uploadFileLabel: 'Pujar arxiu',
+    votes: 'Vots',
     fase1: 'Fase 1', fase2: 'Fase 2', fase3: 'Fase 3', fase4: 'Fase 4'
   },
   ENG: {
     appTitle: 'Classroom Dynamics',
-    sidebarTitle: 'Class Manager',
-    phasesHeader: 'Activity Phases',
+    sidebarTitle: 'Appearances are deceptive',
+    phasesHeader: 'Activity phases',
     configHeader: 'Configuration',
     settingsLabel: 'Settings',
     languageHeader: 'Language',
@@ -84,6 +89,7 @@ const TRANSLATIONS = {
     galleryLabel: 'Image Gallery',
     imageUrlLabel: 'Image URL',
     uploadFileLabel: 'Upload file',
+    votes: 'Votes',
     fase1: 'Phase 1', fase2: 'Phase 2', fase3: 'Phase 3', fase4: 'Phase 4'
   }
 };
@@ -92,21 +98,30 @@ interface PhaseConfig {
   id: PhaseId;
   bgColor: string;
   images: string[];
+  votes: number[];
+  revealed: boolean[];
 }
 
 type AppState = Record<PhaseId, PhaseConfig>;
 
-// --- Initial Data ---
-const generateInitialImages = (seedPrefix: string) => 
-  Array.from({ length: 16 }, (_, i) => 
-    `https://picsum.photos/seed/${seedPrefix}_${i + 1}/800/600`
-  );
+// --- Initial Data Helper ---
+const createInitialPhase = (id: PhaseId, bgColor: string, seed: string): PhaseConfig => {
+  const count = 16;
+  return {
+    id,
+    bgColor,
+    images: Array.from({ length: count }, (_, i) => `https://picsum.photos/seed/${seed}_${i + 1}/800/600`),
+    votes: new Array(count).fill(0),
+    // Start with only the first image revealed
+    revealed: new Array(count).fill(false).map((_, i) => i === 0)
+  };
+};
 
 const INITIAL_STATE: AppState = {
-  fase1: { id: 'fase1', bgColor: '#e0f2fe', images: generateInitialImages('f1') }, // sky-100
-  fase2: { id: 'fase2', bgColor: '#fce7f3', images: generateInitialImages('f2') }, // pink-100
-  fase3: { id: 'fase3', bgColor: '#dcfce7', images: generateInitialImages('f3') }, // green-100
-  fase4: { id: 'fase4', bgColor: '#f3e8ff', images: generateInitialImages('f4') }, // purple-100
+  fase1: createInitialPhase('fase1', '#e0f2fe', 'f1'), // sky-100
+  fase2: createInitialPhase('fase2', '#fce7f3', 'f2'), // pink-100
+  fase3: createInitialPhase('fase3', '#dcfce7', 'f3'), // green-100
+  fase4: createInitialPhase('fase4', '#f3e8ff', 'f4'), // purple-100
 };
 
 // --- Main Component ---
@@ -117,6 +132,8 @@ export default function ClassroomApp() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const t = TRANSLATIONS[currentLang];
+  const LANGUAGES: Language[] = ['CAST', 'CAT', 'ENG'];
+  const currentLangIndex = LANGUAGES.indexOf(currentLang);
 
   // --- State Updaters ---
   const updatePhaseColor = (phaseId: PhaseId, color: string) => {
@@ -135,6 +152,39 @@ export default function ClassroomApp() {
         [phaseId]: { ...prev[phaseId], images: newImages }
       };
     });
+  };
+
+  const handleVote = (phaseId: PhaseId, imageIndex: number, delta: number) => {
+    setAppState(prev => {
+      const newVotes = [...prev[phaseId].votes];
+      newVotes[imageIndex] = (newVotes[imageIndex] || 0) + delta;
+      return {
+        ...prev,
+        [phaseId]: { ...prev[phaseId], votes: newVotes }
+      };
+    });
+  };
+
+  const markRevealed = (phaseId: PhaseId, imageIndex: number) => {
+    setAppState(prev => {
+      const newRevealed = [...prev[phaseId].revealed];
+      if (!newRevealed[imageIndex]) {
+        newRevealed[imageIndex] = true;
+        return { ...prev, [phaseId]: { ...prev[phaseId], revealed: newRevealed } };
+      }
+      return prev;
+    });
+  };
+
+  const resetPhaseState = (phaseId: PhaseId) => {
+    setAppState(prev => ({
+      ...prev,
+      [phaseId]: {
+        ...prev[phaseId],
+        votes: new Array(prev[phaseId].images.length).fill(0),
+        revealed: new Array(prev[phaseId].images.length).fill(false).map((_, i) => i === 0)
+      }
+    }));
   };
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
@@ -157,12 +207,13 @@ export default function ClassroomApp() {
         lg:relative lg:translate-x-0
       `}>
         <div className="h-16 flex items-center px-6 border-b border-gray-100">
-           <Layers className="w-6 h-6 text-indigo-600 mr-2" />
-           <span className="text-xl font-bold text-gray-900 tracking-tight">{t.sidebarTitle}</span>
+           <Layers className="w-6 h-6 text-indigo-600 mr-2 flex-shrink-0" />
+           <span className="text-lg font-bold text-gray-900 tracking-tight truncate" title={t.sidebarTitle}>
+             {t.sidebarTitle}
+           </span>
         </div>
 
         <nav className="flex-1 py-6 px-4 space-y-1 overflow-y-auto">
-          {/* Phases Section */}
           <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 px-2">{t.phasesHeader}</div>
           {(['fase1', 'fase2', 'fase3', 'fase4'] as PhaseId[]).map((id) => (
             <button
@@ -175,7 +226,6 @@ export default function ClassroomApp() {
             </button>
           ))}
 
-          {/* Settings Section */}
           <div className="pt-6 mt-6 border-t border-gray-100">
             <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 px-2">{t.configHeader}</div>
             <button
@@ -187,18 +237,21 @@ export default function ClassroomApp() {
             </button>
           </div>
 
-          {/* Language Section */}
           <div className="pt-6 mt-6 border-t border-gray-100 px-2">
             <div className="flex items-center gap-2 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4 px-2">
               <Globe className="w-3 h-3" />
               {t.languageHeader}
             </div>
-            <div className="flex bg-gray-100 p-1 rounded-xl">
-              {(['CAST', 'CAT', 'ENG'] as Language[]).map((lang) => (
+            <div className="relative flex bg-gray-100 p-1 rounded-xl isolate">
+              <div
+                className="absolute top-1 bottom-1 left-1 bg-white rounded-lg shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] -z-10"
+                style={{ width: `calc((100% - 8px) / 3)`, transform: `translateX(${currentLangIndex * 100}%)` }}
+              />
+              {LANGUAGES.map((lang) => (
                 <button
                   key={lang}
                   onClick={() => setCurrentLang(lang)}
-                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${currentLang === lang ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors duration-300 ${currentLang === lang ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
                 >
                   {lang}
                 </button>
@@ -220,14 +273,17 @@ export default function ClassroomApp() {
         ) : (
           <PhaseSlideshow 
             key={currentView} 
+            phaseId={currentView}
             config={appState[currentView]} 
             phaseName={t[currentView]}
             t={t}
+            onVote={handleVote}
+            onReveal={markRevealed}
+            onReset={resetPhaseState}
           />
         )}
       </main>
 
-      {/* Mobile Overlay */}
       {isSidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={closeSidebar} />
       )}
@@ -235,89 +291,194 @@ export default function ClassroomApp() {
   );
 }
 
-
 // --- Sub-Component: Slideshow View ---
-function PhaseSlideshow({ config, phaseName, t }: { config: PhaseConfig, phaseName: string, t: typeof TRANSLATIONS['CAST'] }) {
+interface SlideshowProps {
+  phaseId: PhaseId;
+  config: PhaseConfig;
+  phaseName: string;
+  t: typeof TRANSLATIONS['CAST'];
+  onVote: (phaseId: PhaseId, index: number, delta: number) => void;
+  onReveal: (phaseId: PhaseId, index: number) => void;
+  onReset: (phaseId: PhaseId) => void;
+}
+
+function PhaseSlideshow({ phaseId, config, phaseName, t, onVote, onReveal, onReset }: SlideshowProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const totalImages = config.images.length;
+  const showVoting = phaseId === 'fase1' || phaseId === 'fase2';
+
+  // Ensure current index is revealed if somehow it isn't (defensive)
+  useEffect(() => {
+    if (!config.revealed[currentIndex]) {
+      onReveal(phaseId, currentIndex);
+    }
+  }, [currentIndex, phaseId, config.revealed, onReveal]);
 
   const handleNext = () => {
-    if (currentIndex < totalImages - 1) setCurrentIndex(c => c + 1);
+    if (currentIndex < totalImages - 1) {
+      const nextIndex = currentIndex + 1;
+      onReveal(phaseId, nextIndex);
+      setCurrentIndex(nextIndex);
+    }
   };
+
   const handlePrev = () => {
     if (currentIndex > 0) setCurrentIndex(c => c - 1);
   };
-  const handleReset = () => setCurrentIndex(0);
+
+  const handleResetClick = () => {
+    onReset(phaseId);
+    setCurrentIndex(0);
+  };
 
   const currentImage = config.images[currentIndex];
+  const currentVotes = config.votes[currentIndex];
 
   return (
     <div 
-      className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-8 transition-colors duration-500"
+      className="w-full h-full flex flex-col p-4 sm:p-6 transition-colors duration-500 overflow-hidden"
       style={{ backgroundColor: config.bgColor }}
     >
-      <div className="w-full max-w-4xl bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col relative">
+      <div className="flex-1 w-full max-w-5xl mx-auto bg-white/90 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col relative">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white/50">
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-800">{phaseName}</h2>
-          <span className="px-3 py-1 bg-gray-900/10 text-gray-700 rounded-full font-medium text-sm whitespace-nowrap">
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-white/50 flex-shrink-0">
+          <h2 className="text-xl sm:text-2xl font-bold text-gray-800 truncate">{phaseName}</h2>
+          <span className="px-3 py-1 bg-gray-900/10 text-gray-700 rounded-full font-medium text-sm whitespace-nowrap ml-4">
             {t.imageCounter(currentIndex + 1, totalImages)}
           </span>
         </div>
 
-        {/* Image Area */}
-        <div className="relative aspect-video w-full bg-gray-50/50 flex items-center justify-center p-2 sm:p-6 overflow-hidden">
-          {currentImage ? (
-            <img 
-              src={currentImage} 
-              alt={`${phaseName} slide ${currentIndex + 1}`} 
-              className="w-full h-full object-contain drop-shadow-xl rounded-lg z-10 relative"
-            />
-          ) : (
-            <div className="flex flex-col items-center text-gray-400">
-              <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
-              <p>{t.noImageAssigned}</p>
+        {/* Main Content Area (Image + Optional Voting Sidebar) */}
+        <div className="flex-1 flex overflow-hidden relative">
+          
+          {/* Image Container */}
+          <div className="flex-1 relative bg-gray-50/50 flex items-center justify-center p-4 sm:p-8 overflow-hidden">
+            {currentImage ? (
+               <img 
+                 key={currentIndex} // Force re-render for animation
+                 src={currentImage} 
+                 alt={`${phaseName} slide ${currentIndex + 1}`} 
+                 className="w-full h-full object-contain drop-shadow-xl rounded-lg animate-in fade-in zoom-in-95 duration-300"
+               />
+            ) : (
+              <div className="flex flex-col items-center text-gray-400">
+                <ImageIcon className="w-16 h-16 mb-4 opacity-50" />
+                <p>{t.noImageAssigned}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Voting Sidebar (Only for Phase 1 & 2) */}
+          {showVoting && (
+            <div className="w-24 sm:w-32 border-l border-gray-100 bg-white/50 flex flex-col items-center justify-center p-4 gap-6 animate-in slide-in-from-right duration-300">
+              <button 
+                onClick={() => onVote(phaseId, currentIndex, 1)}
+                className="p-3 bg-green-100 text-green-600 rounded-2xl hover:bg-green-200 transition-colors active:scale-95"
+              >
+                <Plus className="w-8 h-8" />
+              </button>
+              <div className="text-center">
+                <div className="text-3xl sm:text-4xl font-black text-gray-800 tabular-nums">
+                  {currentVotes}
+                </div>
+                <div className="text-xs font-bold text-gray-400 uppercase mt-1">{t.votes}</div>
+              </div>
+              <button 
+                onClick={() => onVote(phaseId, currentIndex, -1)}
+                className="p-3 bg-red-100 text-red-600 rounded-2xl hover:bg-red-200 transition-colors active:scale-95"
+              >
+                <Minus className="w-8 h-8" />
+              </button>
             </div>
           )}
         </div>
 
-        {/* Controls */}
-        <div className="px-4 py-4 sm:px-8 sm:py-6 border-t border-gray-100 bg-white/80 flex justify-between items-center gap-2">
-          <button 
-            onClick={handlePrev}
-            disabled={currentIndex === 0}
-            className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl font-semibold transition-all ${currentIndex === 0 ? 'opacity-40 cursor-not-allowed bg-gray-100 text-gray-400' : 'bg-gray-100 hover:bg-white hover:shadow-md text-gray-700'}`}
-          >
-            <ChevronLeft className="w-5 h-5" />
-            <span className="hidden sm:inline">{t.prev}</span>
-          </button>
+        {/* Navigation Bar with Thumbnails */}
+        <div className="flex-shrink-0 border-t border-gray-100 bg-white/80 flex flex-col">
+            
+            {/* Thumbnails Scroll Area */}
+            <div className="flex items-center gap-2 p-3 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+              {config.images.map((img, idx) => {
+                const isRevealed = config.revealed[idx];
+                const isActive = idx === currentIndex;
+                return (
+                  <button
+                    key={idx}
+                    disabled={!isRevealed}
+                    onClick={() => isRevealed && setCurrentIndex(idx)}
+                    className={`
+                      relative flex-shrink-0 w-16 h-12 rounded-lg overflow-hidden transition-all duration-500 perspective-1000
+                      ${isActive ? 'ring-2 ring-indigo-600 ring-offset-2 scale-105 z-10' : ''}
+                      ${!isRevealed ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:opacity-100 opacity-80'}
+                    `}
+                  >
+                    {/* Inner container for flip effect */}
+                     <div className={`w-full h-full transition-transform duration-700 transform-style-3d ${isRevealed ? 'rotate-y-0' : 'rotate-y-180'}`}>
+                        {/* Front (Revealed Image) */}
+                        <div className="absolute inset-0 backface-hidden">
+                          <img src={img} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
+                        </div>
+                        {/* Back (Question Mark) */}
+                        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-gray-200 flex items-center justify-center text-gray-400">
+                          <HelpCircle className="w-6 h-6" />
+                        </div>
+                     </div>
+                     {/* Index Badge */}
+                     <div className={`absolute bottom-0 right-0 text-[8px] font-bold px-1 py-0.5 rounded-tl-md ${isActive ? 'bg-indigo-600 text-white' : 'bg-gray-900/50 text-white'}`}>
+                       {idx + 1}
+                     </div>
+                  </button>
+                );
+              })}
+            </div>
 
-          {currentIndex === totalImages - 1 ? (
-            <button 
-              onClick={handleReset}
-              className="flex items-center gap-2 px-4 sm:px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
-            >
-              <RefreshCcw className="w-5 h-5" />
-              <span className="hidden sm:inline">{t.resetPhase}</span>
-              <span className="sm:hidden">Reiniciar</span>
-            </button>
-          ) : (
-            <button 
-              onClick={handleNext}
-              className="flex items-center gap-2 px-4 sm:px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
-            >
-              <span className="hidden sm:inline">{t.next}</span>
-              <span className="sm:hidden">Siguiente</span>
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          )}
+            {/* Main Controls */}
+            <div className="px-4 py-3 sm:px-8 sm:py-4 border-t border-gray-50 flex justify-between items-center">
+              <button 
+                onClick={handlePrev}
+                disabled={currentIndex === 0}
+                className={`flex items-center gap-2 px-4 sm:px-5 py-2 rounded-xl font-semibold transition-all ${currentIndex === 0 ? 'opacity-40 cursor-not-allowed bg-gray-100 text-gray-400' : 'bg-gray-100 hover:bg-white hover:shadow-md text-gray-700'}`}
+              >
+                <ChevronLeft className="w-5 h-5" />
+                <span className="hidden sm:inline">{t.prev}</span>
+              </button>
+
+              {currentIndex === totalImages - 1 ? (
+                <button 
+                  onClick={handleResetClick}
+                  className="flex items-center gap-2 px-4 sm:px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
+                >
+                  <RefreshCcw className="w-5 h-5" />
+                  <span className="hidden sm:inline">{t.resetPhase}</span>
+                  <span className="sm:hidden">Reiniciar</span>
+                </button>
+              ) : (
+                <button 
+                  onClick={handleNext}
+                  className="flex items-center gap-2 px-4 sm:px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
+                >
+                  <span className="hidden sm:inline">{t.next}</span>
+                  <span className="sm:hidden">Siguiente</span>
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              )}
+            </div>
         </div>
+
       </div>
+      
+      {/* Add needed CSS for 3D flip effect if standard Tailwind doesn't have it fully configured by default */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        .rotate-y-0 { transform: rotateY(0deg); }
+      `}} />
     </div>
   );
 }
-
 
 // --- Sub-Component: Settings View ---
 function SettingsView({
@@ -349,12 +510,12 @@ function SettingsView({
       </header>
 
       {/* Tabs */}
-      <div className="flex overflow-x-auto scrollbar-hide gap-2 p-1 bg-gray-200/50 rounded-2xl mb-8">
+      <div className="flex overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none'] gap-2 p-1 bg-gray-200/50 rounded-2xl mb-8">
         {phases.map(phaseId => (
           <button
             key={phaseId}
             onClick={() => setActiveTab(phaseId)}
-            className={`flex-1 min-w-[100px] py-2.5 px-4 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === phaseId ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100/50'}`}
+            className={`flex-1 min-w-24 py-2.5 px-4 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === phaseId ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100/50'}`}
           >
             {t[phaseId]}
           </button>
@@ -379,7 +540,6 @@ function SettingsView({
               <p className="font-medium text-gray-700">{t.selectColor}</p>
               <p className="text-sm text-gray-500 uppercase">{appState[activeTab].bgColor}</p>
             </div>
-            {/* Preview box */}
             <div 
               className="ml-auto w-24 sm:w-32 h-16 rounded-lg shadow-inner border border-gray-200 transition-colors"
               style={{ backgroundColor: appState[activeTab].bgColor }}
@@ -396,7 +556,6 @@ function SettingsView({
           <div className="grid gap-6 sm:grid-cols-2">
             {appState[activeTab].images.map((imgUrl, idx) => (
               <div key={idx} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex gap-4 items-start">
-                {/* Thumbnail */}
                 <div className="relative w-24 h-24 flex-shrink-0 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 group">
                   {imgUrl ? (
                     <img src={imgUrl} alt="" className="w-full h-full object-cover" />
@@ -405,12 +564,11 @@ function SettingsView({
                       <ImageIcon className="w-8 h-8" />
                     </div>
                   )}
-                  <div className="absolute top-0 left-0 bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg">
+                  <div className="absolute top-0 left-0 bg-indigo-600 text-white text-[0.625rem] font-bold px-2 py-1 rounded-br-lg">
                     #{idx + 1}
                   </div>
                 </div>
 
-                {/* Inputs */}
                 <div className="flex-1 min-w-0 space-y-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 mb-1">{t.imageUrlLabel}</label>
